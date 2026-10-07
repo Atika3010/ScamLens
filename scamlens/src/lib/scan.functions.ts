@@ -40,18 +40,31 @@ export const analyzeMessage = createServerFn({ method: "POST" })
       if (m) parts.push({ inline_data: { mime_type: m[1], data: m[2] } });
     }
 
-    const res = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent",
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: SYSTEM }] },
-          contents: [{ role: "user", parts }],
-          generationConfig: { responseMimeType: "application/json" },
-        }),
-      },
-    );
+        const reqBody = JSON.stringify({
+      systemInstruction: { parts: [{ text: SYSTEM }] },
+      contents: [{ role: "user", parts }],
+      generationConfig: { responseMimeType: "application/json" },
+    });
+    let res: Response | undefined;
+    for (const model of ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash"]) {
+      try {
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+            body: reqBody,
+            signal: AbortSignal.timeout(15000),
+          },
+        );
+        res = r;
+        if (r.ok) break;
+        console.error("Gemini", model, r.status, await r.clone().text().catch(() => ""));
+      } catch (e) {
+        console.error("Gemini", model, "timeout or network error", e);
+      }
+    }
+    if (!res) throw new Error("AI is busy right now. Please try again in a minute.");
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       console.error("Gemini error", res.status, body);
